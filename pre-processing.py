@@ -92,9 +92,12 @@ if __name__ == "__main__":
             ##使用gussian blur
             foreground_2_gray = cv2.cvtColor(np.uint8(foreground_2) , cv2.COLOR_BGR2GRAY)
             foreground_2_blur = cv2.GaussianBlur(foreground_2_gray, ksize = (5,5), sigmaX= 0,sigmaY=0)
-            kernel = np.ones((5,5),np.uint8)
-            foregroung_2_blur = cv2.morphologyEx(foreground_2_blur,cv2.MORPH_OPEN,kernel)
-            # cv2.imshow("foreground_blur.jpg", np.array(foreground_2_blur, dtype=np.uint8))
+            kernel_3 = np.ones((3,3),np.uint8)
+            kernel_5 = np.ones((5,5),np.uint8)
+            foreground_2_blur = cv2.morphologyEx(foreground_2_blur,cv2.MORPH_ERODE,kernel_3)
+            foreground_2_blur = cv2.morphologyEx(foreground_2_blur,cv2.MORPH_DILATE,kernel_5)
+            # foreground_2_blur = cv2.morphologyEx(foreground_2_blur,cv2.MORPH_CLOSE,kernel_5)
+            cv2.imshow("foreground_blur.jpg", np.array(foreground_2_blur, dtype=np.uint8))
 
             #進行二值化
             b = foreground_2_blur.copy()
@@ -145,26 +148,33 @@ if __name__ == "__main__":
                 areas_above = []
                 areas_below = []
                 mask_2 = mask_1.copy()
-                aa = np.zeros((2,1),dtype=int)
                 for i, cnt in enumerate(contours):
                     if moments[i]['m00'] > 0:
                         cx = int(moments[i]['m10']/moments[i]['m00'])
                         cy = int(moments[i]['m01']/moments[i]['m00'])
-                        if max_area2 <=1100 and max_area1 >= 4000:           #如果在這個區間，只顯現最大的面積
+                        # x, y, w, h = cv2.boundingRect(max_contours)
+                        if max_area2 <=1100 and max_area1 >= 4000:         #如果在這個區間，只顯現最大的面積
+                            contours_up = mask_2[:cy]
+                            contours_up[contours_up == 255] = 1
+                            contours_down = mask_2[360:720]
+                            contours_down[contours_down == 255] = 2
                             cv2.drawContours(frame, [max_contours[0]], -1, (0, 255, 0), 3)
                             cv2.imshow('Contours', frame)
                             cv2.drawContours(mask_2,contours, max_area_idx1, 255, cv2.FILLED)
-                            aa = mask_2[:360]
-                            aa[aa == 0] = 2
-                            cv2.imshow("mask.jpg", np.array(mask_2, dtype=np.uint8))
-                        else:                                                         #如果在這個區間，顯現最大與第二大的面積
+                            cv2.imshow("mask_2.jpg", np.array(mask_2, dtype=np.uint8))
+                        else:                                              #如果在這個區間，顯現最大與第二大的面積
                             cv2.drawContours(frame, max_contours, -1, (0, 255, 0), 3)
                             cv2.imshow('Contours', frame)
+                            cv2.drawContours(mask_2,max_contours, -1, 255, cv2.FILLED)
+                            cv2.imshow("mask_2.jpg", np.array(mask_2, dtype=np.uint8))
                             if cy > height/2:
-                                # areas_above[:360]=1
-                                areas_below.append(0)
+                                contours_up = mask_2[:360]
+                                contours_up[contours_up == 255] = 1
                             elif cy < height/2:
-                                areas_above.append(0)
-                                # areas_below[360:]=2
+                                contours_down = mask_2[360:720]
+                                contours_down[contours_down == 255] = 2
+
+                print('up',contours_up)
+                print('down',contours_down)
 
             cv2.waitKey(1)
