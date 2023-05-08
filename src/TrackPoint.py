@@ -1,8 +1,9 @@
 from pathlib import Path
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 import numpy as np
 import cv2
+import tensorflow as tf
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 if __name__ == '__main__':
@@ -10,13 +11,33 @@ if __name__ == '__main__':
 
     sys.path.append(str(PROJECT_DIR))
 
-from TrackNetv2_33_predict import TrackNetV2_33
+from src.TrackNetv2_33_predict import TrackNetV2_33
+from lib.FileTools.FileSearcher import check2create_dir, get_filenames
+from lib.FileTools.PickleOperator import save_pickle
 
 
 class TrackDebug:
-    dir = Path('./Data/result/00001')
+    dir = Path('./Data/result')
+    image_dir = Path('image')
+    predict_dir = Path('predict')
+    mask_dir = Path('mask')
+    predict_merge_dir = Path('predict_merge')
     HEIGHT = 288
     WIDTH = 512
+
+    def __init__(self, data_id) -> None:
+        self.dir = TrackDebug.dir / data_id
+        self.image_dir = self.dir / TrackDebug.image_dir
+        self.image_dir = self.dir / TrackDebug.image_dir
+        self.mask_dir = self.dir / TrackDebug.mask_dir
+        self.predict_dir = self.dir / TrackDebug.predict_dir
+        self.predict_merge_dir = self.dir / TrackDebug.predict_merge_dir
+
+        check2create_dir(str(self.dir))
+        check2create_dir(str(self.image_dir))
+        check2create_dir(str(self.predict_dir))
+        check2create_dir(str(self.mask_dir))
+        check2create_dir(str(self.predict_merge_dir))
 
 
 class TrackPoint:
@@ -50,7 +71,7 @@ class TrackPoint:
         self.total_masks3 = np.zeros((self.num_frame, 3, *self.img_size), dtype=np.uint8)  # 3 means 1 frame predict 3 times
         self.total_points3 = np.zeros((self.num_frame, 3, 2), dtype=np.uint16)  # 3 means 1 frame predict 3 times
 
-    def update_frame(self, frame: np.ndarray):
+    def update_frame(self, frame: np.ndarray, isDebug=False):
         '''
         This function updates a frame by shifting and updating an array of three frames.
 
@@ -65,6 +86,9 @@ class TrackPoint:
 
         self.img3_arr[self.idx0] = frame
         self.img3order_arr[:] = [self.img3_arr[self.idx2], self.img3_arr[self.idx1], self.img3_arr[self.idx0]]
+
+        if isDebug:
+            cv2.imwrite(str(self.debugger.image_dir / f'{self.currentFrame}.jpg'), frame)
 
     def predict(self, isDebug=False):
         '''
@@ -93,8 +117,8 @@ class TrackPoint:
                 if self.masks is not None:
                     img_cp[self.masks[i] > 100] = (0, 255, 0)
 
-                cv2.imshow(f'img{i}', cv2.resize(img_cp, (self.debugger.WIDTH, self.debugger.HEIGHT)))
-                cv2.imwrite(str(self.debugger.dir / f'{self.currentFrame-2+i}_{2-i}.png'), img_cp)
+                # cv2.imshow(f'img{i}', cv2.resize(img_cp, (self.debugger.WIDTH, self.debugger.HEIGHT)))
+                cv2.imwrite(str(self.debugger.predict_dir / f'{self.currentFrame-2+i}_{2-i}.jpg'), img_cp)
 
     def get_rangeInfo(self, start_frame: int = 0, end_frame: int = -1):
         '''
@@ -153,18 +177,18 @@ class TrackPoint:
         vectors_arr = points_arr[:-1] - points_arr[1:]
         vectors_dist_arr = np.linalg.norm(vectors_arr[:-1] - vectors_arr[1:], axis=1)
 
-        hit_frames = np.where(vectors_dist_arr[1:] - vectors_dist_arr[:-1] > 20)[0] + 2
+        hit_frames = np.where(vectors_dist_arr[1:] - vectors_dist_arr[:-1] > 10)[0] + 2
 
         return np.uint16(points_arr), hit_frames
 
-    def get_hitRangeMasks5(self):
+    def get_hitRangeMasks5(self, isDebug=False):
         '''
         This function generates 5 masks for each estimated frame of a badminton hit, with the center of each
         mask being the hit frame and the masks being a combination of circles and previously generated
         masks.
 
         Returns:
-          The function `get_hitRangeMasks5` returns a tuple containing two elements:
+            The function `get_hitRangeMasks5` returns a tuple containing two elements:
         1. A list of numpy arrays, where each numpy array is a mask of shape (5, *self.img_size) representing the badminton court area for each hit frame. The list contains as many masks as there are hit frames.
         2. An array of each masks5 corresponding start frame.
         '''
@@ -183,32 +207,62 @@ class TrackPoint:
 
             masks5_ls.append(np.uint8(masks5))
 
-            # cv2.imshow(f'hit_frame: {hit_frame} merge', np.uint8(masks5[2]))
+            # if isDebug:
+            #     cv2.imshow(f'hit_frame: {hit_frame} merge', np.uint8(masks5[2]))
+
+        if isDebug:
+            for i, point_arr in enumerate(points_arr, start=1):
+                mask = np.zeros(self.img_size, dtype=np.uint16)
+                cv2.circle(mask, point_arr, 5, 255, -1)
+                mask += np.sum(self.total_masks3[i - 1], axis=0)
+                cv2.imwrite(str(self.debugger.mask_dir / f'{i}.jpg'), np.uint8(mask))
+
+                img = cv2.imread(str(self.debugger.image_dir / f'{i}.jpg'))
+                img[mask > 0] = (0, 0, 255)
+                cv2.imwrite(str(self.debugger.predict_merge_dir / f'{i}.jpg'), np.uint8(img))
 
         # cv2.waitKey(0)
         return masks5_ls, hit_frames - 2  # the list of the masks5, and each masks5 corresponding start frame
 
 
 if __name__ == '__main__':
-    filename = 'Data/part1/train/00001/00001.mp4'
+    DEBUG_LS = [
+        'update_frame',
+        'predict',
+        'get_hitRangeMasks5',
+    ]
 
-    cap = cv2.VideoCapture(filename)
-    FRAME = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    WIDTH = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    HIGHT = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    data_dir = 'Data/part1/train'
 
-    tNet33 = TrackNetV2_33('src/TrackNetv2/3_in_3_out/model906_30')
-    tp = TrackPoint((HIGHT, WIDTH), FRAME, model=tNet33, debugger=TrackDebug())
+    with tf.device('/gpu:1'):
+        tNet33 = TrackNetV2_33('src/TrackNetv2/3_in_3_out/model906_30')
 
-    # FRAME = 50
-    for _ in range(FRAME):
-        ret, frame = cap.read()
-        if ret is False:
-            continue
-        tp.update_frame(frame)
-        tp.predict(isDebug=False)
-        cv2.waitKey(1)
+        # for multiple dir
+        filenames: List[str] = get_filenames(data_dir, '*.mp4', withDirPath=False)
 
-    masks5_ls, mask5startFrames = tp.get_hitRangeMasks5()
+        # # for one dir test
+        # DEBUG_LS = []
+        # filenames = ['00001/00001.mp4']
 
-    cap.release()
+        for filename in filenames:
+            data_id = filename.split('/')[0]
+            debugger = TrackDebug(data_id)
+
+            cap = cv2.VideoCapture(f'{data_dir}/{filename}')
+            FRAME = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            WIDTH = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            HIGHT = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+            tp = TrackPoint((HIGHT, WIDTH), FRAME, model=tNet33, debugger=debugger)
+
+            # FRAME = 50
+            for _ in range(FRAME):
+                ret, frame = cap.read()
+                if ret is False:
+                    continue
+                tp.update_frame(frame, isDebug='update_frame' in DEBUG_LS)
+                tp.predict(isDebug='predict' in DEBUG_LS)
+
+            masks5_ls, mask5startFrames = tp.get_hitRangeMasks5(isDebug='get_hitRangeMasks5' in DEBUG_LS)
+
+            cap.release()
