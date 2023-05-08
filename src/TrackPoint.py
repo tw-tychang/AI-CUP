@@ -10,7 +10,7 @@ if __name__ == '__main__':
 
     sys.path.append(str(PROJECT_DIR))
 
-from src.TrackNetv2.predict import TrackNetV2_33
+from TrackNetv2_33_predict import TrackNetV2_33
 
 
 class TrackDebug:
@@ -197,7 +197,7 @@ if __name__ == '__main__':
     WIDTH = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     HIGHT = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    tNet33 = TrackNetV2_33('cfg/trackNetv2_33')
+    tNet33 = TrackNetV2_33('src/TrackNetv2/3_in_3_out/model906_30')
     tp = TrackPoint((HIGHT, WIDTH), FRAME, model=tNet33, debugger=TrackDebug())
 
     # FRAME = 50
