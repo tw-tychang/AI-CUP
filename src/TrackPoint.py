@@ -14,6 +14,7 @@ if __name__ == '__main__':
 from src.TrackNetv2_33_predict import TrackNetV2_33
 from lib.FileTools.FileSearcher import check2create_dir, get_filenames
 from lib.FileTools.PickleOperator import save_pickle
+from lib.FileTools.WordOperator import str_format
 
 
 class TrackDebug:
@@ -22,6 +23,7 @@ class TrackDebug:
     predict_dir = Path('predict')
     mask_dir = Path('mask')
     predict_merge_dir = Path('predict_merge')
+    ball_mask5_dir = Path('ball_mask5_dir')
     HEIGHT = 288
     WIDTH = 512
 
@@ -32,12 +34,14 @@ class TrackDebug:
         self.mask_dir = self.dir / TrackDebug.mask_dir
         self.predict_dir = self.dir / TrackDebug.predict_dir
         self.predict_merge_dir = self.dir / TrackDebug.predict_merge_dir
+        self.ball_mask5_dir = self.dir / TrackDebug.ball_mask5_dir
 
         check2create_dir(str(self.dir))
         check2create_dir(str(self.image_dir))
         check2create_dir(str(self.predict_dir))
         check2create_dir(str(self.mask_dir))
         check2create_dir(str(self.predict_merge_dir))
+        check2create_dir(str(self.ball_mask5_dir))
 
 
 class TrackPoint:
@@ -60,7 +64,7 @@ class TrackPoint:
         self.model = model
         self.debugger = debugger
 
-        self.img3_arr: np.ndarray = np.zeros((3, *self.img_size, 3), dtype=np.uint8)  # 3 means the model input 3 images for onece
+        self.img3_arr: np.ndarray = np.zeros((3, *self.img_size, 3), dtype=np.uint8)  # 3 means the model input 3 images for once
         self.img3order_arr: np.ndarray = np.zeros_like(self.img3_arr, dtype=np.uint8)  # the according order for the self.img2_arr
         self.idx0, self.idx1, self.idx2 = 0, 0, 0
 
@@ -199,6 +203,8 @@ class TrackPoint:
         for hit_frame in hit_frames:  # hit_frames are the estimated frame numbers of badminton that are hit
             masks5 = np.zeros((5, *self.img_size), dtype=np.uint16)  # create 5 mask for corresponding frame, center is the hit_frame
             for i in range(-2, 3):
+                if points_arr.shape[0] <= (hit_frame + i):
+                    continue
                 cv2.circle(masks5[i + 2], points_arr[hit_frame + i], 5, 255, -1)
 
             # cv2.imshow(f'hit_frame: {hit_frame}', np.uint8(masks5[2]))
@@ -221,7 +227,6 @@ class TrackPoint:
                 img[mask > 0] = (0, 0, 255)
                 cv2.imwrite(str(self.debugger.predict_merge_dir / f'{i}.jpg'), np.uint8(img))
 
-        # cv2.waitKey(0)
         return masks5_ls, hit_frames - 2  # the list of the masks5, and each masks5 corresponding start frame
 
 
@@ -234,17 +239,20 @@ if __name__ == '__main__':
 
     data_dir = 'Data/part1/train'
 
-    with tf.device('/gpu:1'):
+    with tf.device('/gpu:0'):
         tNet33 = TrackNetV2_33('src/TrackNetv2/3_in_3_out/model906_30')
 
         # for multiple dir
         filenames: List[str] = get_filenames(data_dir, '*.mp4', withDirPath=False)
+        # filenames = filenames[filenames.index('00041/00041.mp4') :]
+        # filenames = filenames[len(filenames) // 2 :]
 
-        # # for one dir test
+        # for one dir test
         # DEBUG_LS = []
-        # filenames = ['00001/00001.mp4']
+        # filenames = ['00041/00041.mp4']
 
         for filename in filenames:
+            print(str_format(filename, fore='y'))
             data_id = filename.split('/')[0]
             debugger = TrackDebug(data_id)
 
@@ -255,7 +263,6 @@ if __name__ == '__main__':
 
             tp = TrackPoint((HIGHT, WIDTH), FRAME, model=tNet33, debugger=debugger)
 
-            # FRAME = 50
             for _ in range(FRAME):
                 ret, frame = cap.read()
                 if ret is False:
@@ -264,5 +271,8 @@ if __name__ == '__main__':
                 tp.predict(isDebug='predict' in DEBUG_LS)
 
             masks5_ls, mask5startFrames = tp.get_hitRangeMasks5(isDebug='get_hitRangeMasks5' in DEBUG_LS)
+
+            for mask5, mask5startFrame in zip(masks5_ls, mask5startFrames):
+                save_pickle(mask5, f'{debugger.ball_mask5_dir}/{mask5startFrame}.pickle')
 
             cap.release()
