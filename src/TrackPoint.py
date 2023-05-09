@@ -72,7 +72,7 @@ class TrackPoint:
 
         self.masks: np.ndarray
         self.points: np.ndarray
-        self.total_masks3 = np.zeros((self.num_frame, 3, *self.img_size), dtype=np.uint8)  # 3 means 1 frame predict 3 times
+        self.total_masks3 = np.zeros((self.num_frame + 2, 3, *self.img_size), dtype=np.uint8)  # 3 means 1 frame predict 3 times
         self.total_points3 = np.zeros((self.num_frame, 3, 2), dtype=np.uint16)  # 3 means 1 frame predict 3 times
 
     def update_frame(self, frame: np.ndarray, isDebug=False):
@@ -239,13 +239,20 @@ if __name__ == '__main__':
 
     data_dir = 'Data/part1/train'
 
-    with tf.device('/gpu:0'):
+    with tf.device('/gpu:1'):
         tNet33 = TrackNetV2_33('src/TrackNetv2/3_in_3_out/model906_30')
 
         # for multiple dir
         filenames: List[str] = get_filenames(data_dir, '*.mp4', withDirPath=False)
-        # filenames = filenames[filenames.index('00041/00041.mp4') :]
-        # filenames = filenames[len(filenames) // 2 :]
+        filenames.sort()
+
+        import os
+
+        already_filenames = sorted(os.listdir('Data/result'), reverse=True)
+        [filenames.pop(int(f) - 1) for f in already_filenames]
+        filenames = filenames[len(filenames) // 2 :]
+
+        # filenames = filenames[filenames.index('00778/00778.mp4') :]
 
         # for one dir test
         # DEBUG_LS = []
