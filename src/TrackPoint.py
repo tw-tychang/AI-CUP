@@ -250,7 +250,6 @@ if __name__ == '__main__':
 
         already_filenames = sorted(os.listdir('Data/result'), reverse=True)
         [filenames.pop(int(f) - 1) for f in already_filenames]
-        filenames = filenames[len(filenames) // 2 :]
 
         # filenames = filenames[filenames.index('00778/00778.mp4') :]
 
@@ -258,10 +257,17 @@ if __name__ == '__main__':
         # DEBUG_LS = []
         # filenames = ['00041/00041.mp4']
 
+        rest_data = 0
         for filename in filenames:
-            print(str_format(filename, fore='y'))
             data_id = filename.split('/')[0]
             debugger = TrackDebug(data_id)
+
+            check_ls = get_filenames(str(debugger.ball_mask5_dir), '*.pickle')
+            if len(check_ls) != 0:
+                continue
+            rest_data += 1
+
+            print(str_format(filename, fore='y'))
 
             cap = cv2.VideoCapture(f'{data_dir}/{filename}')
             FRAME = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -273,6 +279,7 @@ if __name__ == '__main__':
             for _ in range(FRAME):
                 ret, frame = cap.read()
                 if ret is False:
+                    tp.currentFrame += 1
                     continue
                 tp.update_frame(frame, isDebug='update_frame' in DEBUG_LS)
                 tp.predict(isDebug='predict' in DEBUG_LS)
@@ -283,3 +290,5 @@ if __name__ == '__main__':
                 save_pickle(mask5, f'{debugger.ball_mask5_dir}/{mask5startFrame}.pickle')
 
             cap.release()
+
+    print(str_format(f"rest: {rest_data}", fore='y'))
