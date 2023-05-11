@@ -6,7 +6,7 @@
     "135",
     "--skip-string-normalization"
   ],
-  "cSpell.words": ["interp", "linalg", "Netv"],
+  "cSpell.words": ["interp", "linalg", "Netv", "torchvision"],
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter"
   }

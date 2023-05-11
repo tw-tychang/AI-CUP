@@ -224,7 +224,7 @@ class TrackPoint:
                 cv2.imwrite(str(self.debugger.mask_dir / f'{i}.jpg'), np.uint8(mask))
 
                 img = cv2.imread(str(self.debugger.image_dir / f'{i}.jpg'))
-                img[mask > 0] = (0, 0, 255)
+                img[mask > 0] = (255, 255, 255)
                 cv2.imwrite(str(self.debugger.predict_merge_dir / f'{i}.jpg'), np.uint8(img))
 
         return masks5_ls, hit_frames - 2  # the list of the masks5, and each masks5 corresponding start frame
@@ -232,8 +232,8 @@ class TrackPoint:
 
 if __name__ == '__main__':
     DEBUG_LS = [
-        'update_frame',
-        'predict',
+        # 'update_frame',
+        # 'predict',
         'get_hitRangeMasks5',
     ]
 
@@ -246,12 +246,11 @@ if __name__ == '__main__':
         filenames: List[str] = get_filenames(data_dir, '*.mp4', withDirPath=False)
         filenames.sort()
 
-        import os
+        # import os
+        # already_filenames = sorted(os.listdir('Data/result'), reverse=True)
+        # [filenames.pop(int(f) - 1) for f in already_filenames]
 
-        already_filenames = sorted(os.listdir('Data/result'), reverse=True)
-        [filenames.pop(int(f) - 1) for f in already_filenames]
-
-        # filenames = filenames[filenames.index('00778/00778.mp4') :]
+        # filenames = filenames[len(filenames) // 2 :]
 
         # for one dir test
         # DEBUG_LS = []
@@ -262,7 +261,7 @@ if __name__ == '__main__':
             data_id = filename.split('/')[0]
             debugger = TrackDebug(data_id)
 
-            check_ls = get_filenames(str(debugger.ball_mask5_dir), '*.pickle')
+            check_ls = get_filenames(str(debugger.predict_merge_dir), '*.jpg')
             if len(check_ls) != 0:
                 continue
             rest_data += 1
