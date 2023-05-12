@@ -10,7 +10,7 @@ class CustomCompose:
     def __init__(self, transforms: List[Callable]) -> None:
         self.transforms = transforms
 
-    def __call__(self, img, coordXYs):
+    def __call__(self, img: torch.Tensor, coordXYs: Union[torch.Tensor, None] = None):
         for t in self.transforms:
             if t.__module__ != 'torchvision.transforms.transforms':
                 img, coordXYs = t(img, coordXYs)

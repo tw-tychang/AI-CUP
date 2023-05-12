@@ -22,6 +22,7 @@ numpy = "*"
 
 [dev-packages]
 black = "*"
+matplotlib = "*"
 
 [requires]
 python_version = "3.8"

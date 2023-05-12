@@ -82,7 +82,7 @@ def order_data(dataset_infos: List[DatasetInfo], len_dataset: int):
 def Processing(compose: Union[CustomCompose, transforms.Compose]):
     def __processing(imgs: List[np.ndarray], label_info: Union[pd.Series, int] = 0):
         imgs = [TF.to_pil_image(img) for img in imgs]
-        process_imgs = torch.stack([TF.to_tensor(img) for img in imgs]).type(torch.uint8)
+        process_imgs = torch.stack([TF.to_tensor(img) * 255 for img in imgs]).type(torch.uint8)
 
         if not isinstance(label_info, int):  # hit_frame in it
             process_label = torch.zeros(32, dtype=torch.float32)
@@ -113,19 +113,21 @@ def Processing(compose: Union[CustomCompose, transforms.Compose]):
                 w_id += 2
             process_label[w_id] = 1.0  # Winner: [29~31] one-hot
 
-            coordXYs = torch.stack([process_label[14:20:2], process_label[15:20:2]])
+            coordXYs = torch.stack([process_label[14:20:2], process_label[15:20:2]])  # stack like: [[relatedX, ...], [relatedY, ...]]
 
             process_imgs, coordXYs = compose(process_imgs, coordXYs)
             process_label[14:20:2] = coordXYs[0]
             process_label[15:20:2] = coordXYs[1]
 
-        if label_info == 0:  # test stage
-            return compose(process_imgs)
-        elif label_info == -1:  # hit_frame miss
-            process_label = torch.zeros(6, dtype=torch.float32)
-            process_label[-1] = 1.0
-            process_imgs, _ = compose(process_imgs, None)
             return process_imgs, process_label
+
+        if label_info == -1:  # hit_frame miss
+            process_label = torch.zeros(32, dtype=torch.float32)
+            process_label[6] = 1.0
+            process_imgs = compose(process_imgs)[0]
+            return process_imgs, process_label
+
+        return compose(process_imgs)[0]  # label_info == 0, test stage
 
     return __processing
 
@@ -240,8 +242,33 @@ if __name__ == '__main__':
     # dataset[1]
 
     train_set, val_set, train_loader, val_loader = get_dataloader(
-        str(DatasetInfo.data_dir), Processing(compose), dataset_rate=0.8, batch_size=32, num_workers=8
+        str(DatasetInfo.data_dir), Processing(compose), dataset_rate=0.8, batch_size=32, num_workers=0
     )
 
-    for data, label in val_loader:
-        aa = 0
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    w = 10
+    h = 10
+    columns = 5
+    rows = 3
+
+    i = 0
+    fig = plt.figure()
+
+    data: torch.Tensor
+    label: torch.Tensor  # shape: 32 -> hit | 32 -> miss
+    for j, (data, label) in enumerate(val_loader):
+        batch_imgs = data.numpy().transpose(0, 1, 3, 4, 2)
+        for k, imgs in enumerate(batch_imgs):
+            for l, img in enumerate(imgs):
+                fig.add_subplot(rows, columns, l + 5 * i + 1)
+                plt.imshow(img)
+
+            i += 1
+            if i == 3:
+                plt.savefig(f'out/{j}_{k}.png')
+                i = 0
+                fig = plt.figure()
+
+        cv2.imwrite(f'tt{i}.jpg', cv2.cvtColor(np.uint8(img * 255), cv2.COLOR_BGR2RGB))
