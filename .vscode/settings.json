@@ -1,0 +1,13 @@
+{
+  "editor.tabSize": 4,
+  "editor.wordWrapColumn": 135,
+  "python.formatting.blackArgs": [
+    "--line-length",
+    "135",
+    "--skip-string-normalization"
+  ],
+  "cSpell.words": ["interp", "linalg", "Netv", "torchvision"],
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  }
+}
