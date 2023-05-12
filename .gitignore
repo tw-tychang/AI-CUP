@@ -1,5 +1,7 @@
 Data/
 Data
+out/
+test*
 cfg/trackNetv2_33
 
 # Byte-compiled / optimized / DLL files
