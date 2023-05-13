@@ -17,14 +17,12 @@ if __name__ == '__main__':
 
     sys.path.append(str(PROJECT_DIR))
 
-from lib.FileTools.PickleOperator import load_pickle
-from lib.FileTools.WordOperator import str_format
 from lib.FileTools.FileSearcher import get_filenames
 from src.transforms import CustomCompose, RandomHorizontalFlip, RandomResizedCrop, RandomRotation
 
 
 class DatasetInfo:
-    data_dir = Path('./Data/result')
+    data_dir = Path('./Data/pre-process')
     label_dir = Path('./Data/part1/train')
     image_dir = Path('image')
     predict_dir = Path('predict')
@@ -81,8 +79,7 @@ def order_data(dataset_infos: List[DatasetInfo], len_dataset: int):
 
 def Processing(compose: Union[CustomCompose, transforms.Compose]):
     def __processing(imgs: List[np.ndarray], label_info: Union[pd.Series, int] = 0):
-        imgs = [TF.to_pil_image(img) for img in imgs]
-        process_imgs = torch.stack([TF.to_tensor(img) * 255 for img in imgs]).type(torch.uint8)
+        process_imgs = torch.stack([torch.tensor(img.transpose((2, 0, 1))) for img in imgs]).type(torch.uint8)
 
         if not isinstance(label_info, int):  # hit_frame in it
             process_label = torch.zeros(32, dtype=torch.float32)
@@ -189,27 +186,94 @@ def get_dataloader(
     return train_set, val_set, train_loader, val_loader
 
 
+def get_test_dataloader(
+    test_preprocess_dir: str = str(DatasetInfo.data_dir),
+    Processing=Processing,
+    batch_size: int = 32,
+    num_workers: int = 8,
+):
+    dataset_ids: List[str] = os.listdir(test_preprocess_dir)
+    dataset = Img5Dataset(dataset_ids, processing=Processing)
+
+    loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
+
+    return dataset, loader
+
+
 if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+
     torch.manual_seed(42)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(42)
 
     sizeHW = (640, 640)
-    compose = CustomCompose(
+
+    # for test stage
+    test_compose = CustomCompose(
         [
-            RandomHorizontalFlip(p=0.5),
-            transforms.RandomApply([transforms.ColorJitter(brightness=0.4, hue=0.2, contrast=0.5, saturation=0.2)], p=0.75),
-            transforms.RandomPosterize(6, p=0.25),
-            transforms.RandomEqualize(p=0.25),
-            transforms.RandomSolarize(128, p=0.15),
-            transforms.RandomInvert(p=0.1),
-            transforms.RandomApply(
-                [transforms.ElasticTransform(alpha=random.random() * 200.0, sigma=8.0 + random.random() * 7.0)], p=0.75
-            ),
-            RandomRotation(degrees=[-5, 5], p=0.75),
-            RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
+            transforms.GaussianBlur([3, 3]),
+            transforms.ConvertImageDtype(torch.float32),
+            transforms.Normalize([0.5, 0.5, 0.5], [0.25, 0.25, 0.25]),
         ]
     )
+
+    argumentation_order_ls = [
+        RandomHorizontalFlip(p=0.5),
+        transforms.GaussianBlur([3, 3]),
+        transforms.RandomApply([transforms.ColorJitter(brightness=0.4, hue=0.2, contrast=0.5, saturation=0.2)], p=0.75),
+        transforms.RandomPosterize(6, p=0.15),
+        transforms.RandomEqualize(p=0.15),
+        transforms.RandomSolarize(128, p=0.1),
+        transforms.RandomInvert(p=0.05),
+        transforms.RandomApply(
+            [transforms.ElasticTransform(alpha=random.random() * 200.0, sigma=8.0 + random.random() * 7.0)], p=0.75
+        ),
+        RandomRotation(degrees=[-5, 5], p=0.75),
+        RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
+    ]
+    # for train & val stage
+    train_compose = CustomCompose(
+        [
+            *argumentation_order_ls,
+            transforms.ConvertImageDtype(torch.float32),
+            transforms.Normalize([0.5, 0.5, 0.5], [0.25, 0.25, 0.25]),
+        ]
+    )
+
+    # for pre-view stage
+    view_compose = CustomCompose(argumentation_order_ls)
+
+    train_set, val_set, train_loader, val_loader = get_dataloader(
+        str(DatasetInfo.data_dir), Processing(view_compose), dataset_rate=0.8, batch_size=32, num_workers=0
+    )
+
+    w = 10
+    h = 10
+    columns = 5
+    rows = 3
+
+    i = 0
+    fig = plt.figure()
+
+    data: torch.Tensor
+    label: torch.Tensor  # [6]=0 -> hit | [6]=1 -> miss
+    for j, (data, label) in enumerate(val_loader):
+        batch_imgs = data.numpy().transpose(0, 1, 3, 4, 2)
+        for k, imgs in enumerate(batch_imgs):
+            for l, img in enumerate(imgs):
+                fig.add_subplot(rows, columns, l + 5 * i + 1)
+                plt.imshow(img)
+
+            i += 1
+            if i == 3:
+                print(f"saving out/argumentation_view/{j}_{k}.png")
+                plt.savefig(f'out/argumentation_view/{j}_{k}.png')
+
+                i = 0
+                fig = plt.figure()
+
+        # cv2.imwrite(f'tt{i}.jpg', cv2.cvtColor(np.uint8(img * 255), cv2.COLOR_BGR2RGB))
 
     # dataset_ids: List[str] = os.listdir(str(DatasetInfo.data_dir))
     # dataset = Img5Dataset(dataset_ids, processing=Processing(compose))
@@ -240,35 +304,3 @@ if __name__ == '__main__':
     # train_set, val_set = random_split(dataset, len(dataset) - train_len)
 
     # dataset[1]
-
-    train_set, val_set, train_loader, val_loader = get_dataloader(
-        str(DatasetInfo.data_dir), Processing(compose), dataset_rate=0.8, batch_size=32, num_workers=0
-    )
-
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    w = 10
-    h = 10
-    columns = 5
-    rows = 3
-
-    i = 0
-    fig = plt.figure()
-
-    data: torch.Tensor
-    label: torch.Tensor  # shape: 32 -> hit | 32 -> miss
-    for j, (data, label) in enumerate(val_loader):
-        batch_imgs = data.numpy().transpose(0, 1, 3, 4, 2)
-        for k, imgs in enumerate(batch_imgs):
-            for l, img in enumerate(imgs):
-                fig.add_subplot(rows, columns, l + 5 * i + 1)
-                plt.imshow(img)
-
-            i += 1
-            if i == 3:
-                plt.savefig(f'out/{j}_{k}.png')
-                i = 0
-                fig = plt.figure()
-
-        cv2.imwrite(f'tt{i}.jpg', cv2.cvtColor(np.uint8(img * 255), cv2.COLOR_BGR2RGB))
