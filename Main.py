@@ -10,14 +10,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import EfficientNet
-import Loss
+import warnings
+from Loss import CustomLoss
 from time import sleep
 from tqdm import tqdm,trange
 from src.data_process import DatasetInfo,get_dataloader,Processing,get_test_dataloader
 from src.transforms import CustomCompose,RandomCrop,RandomResizedCrop,RandomHorizontalFlip,RandomRotation
 from lib.FileTools.FileSearcher import get_filenames
+from net import BadminationNet
 
-
+warnings.filterwarnings("ignore",category=UserWarning)
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(device)
@@ -58,12 +60,12 @@ def main(args):
 
     #dataloader
     train_set, val_set, train_loader, val_loader = get_dataloader(
-        str(DatasetInfo.data_dir), Processing(train_compose), dataset_rate=0.8, batch_size=32, num_workers=0)
+        str(DatasetInfo.data_dir), Processing(train_compose), dataset_rate=0.8, batch_size=8, num_workers=16)
 
     test_set,loader = get_test_dataloader(
-    str(DatasetInfo.data_dir), Processing(test_compose), batch_size=32, num_workers=0)
+    str(DatasetInfo.data_dir), Processing(test_compose), batch_size=8, num_workers=16)
 
-    model = EfficientNet.effnetv2_m()
+    model = BadminationNet(in_seq=5,output_classes=32)
     # model = models.efficientnet_v2_m(pretrained = True)
     # model = models.resnet101(pretrained = True)
     model.to(device)
@@ -77,6 +79,7 @@ def main(args):
 
     train_epoch_loss = []
     val_epoch_loss = []
+    loss_func = CustomLoss()
     for epoch in range(total_epoch):       #loop over the dataset multiple times
         print('epoch = ',epoch)
 
@@ -89,8 +92,7 @@ def main(args):
             inputs = inputs.to(device)
             labels = labels.to(device)
             outputs = model(inputs)
-
-            train_loss = Loss.loss()
+            train_loss = loss_func(outputs,labels)
             optimizer.zero_grad()
             train_loss.backward()
             optimizer.step()
@@ -111,11 +113,11 @@ def main(args):
                 inputs = inputs.to(device)
                 labels = labels.to(device)
                 outputs = model(inputs)
-                val_loss = Loss.loss(outputs,labels)
+                val_loss = loss_func(outputs,labels)
                 val_step_loss.append(val_loss.item())
 
                 if (i+1) % print_per_iteration == 0:
-                    print(f'[ep {epoch + 1}][{i + 1:5d}/{len(val_loader):5d}] val_loss: {val_loss.item():.3f}')
+                    print('Validation Loss',val_loss)
             val_epoch_loss.append(np.array(val_step_loss).mean())
         
         correct = 0
@@ -151,7 +153,7 @@ if __name__ == '__main__':
     parser.add_argument('-lr', type=float, default=0.004, help='initial learning rate')
     # parser.add_argument('-num_classes',type=int, default=32, help='classification number')
     parser.add_argument('-w_d',type = int ,default=4e-5,help='weight_decay')
-    parser.add_argument('-epochs',type = int ,default=200)  
+    parser.add_argument('-epochs',type = int ,default=10)  
     parser.add_argument('-gamma', type=float, default=0.98, help='Initial gamma for scheduler and the default is 0.8.')
     parser.add_argument('-step', type=int, default=4, help='Initial step for scheduler and the default is 10.')  
     parser.add_argument('-m', type=float, default=0.9, help='momentum') 
