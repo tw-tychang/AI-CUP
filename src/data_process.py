@@ -18,11 +18,13 @@ if __name__ == '__main__':
     sys.path.append(str(PROJECT_DIR))
 
 from lib.FileTools.FileSearcher import get_filenames
+from lib.FileTools.PickleOperator import load_pickle, save_pickle
 from src.transforms import CustomCompose, RandomHorizontalFlip, RandomResizedCrop, RandomRotation
 
 
 class DatasetInfo:
     data_dir = Path('./Data/pre-process')
+    dataset_pickle_dir = Path('./Data/dataset_pickle')
     label_dir = Path('./Data/part1/train')
     image_dir = Path('image')
     predict_dir = Path('predict')
@@ -129,6 +131,49 @@ def Processing(compose: Union[CustomCompose, transforms.Compose]):
     return __processing
 
 
+def Processing2Tensor():
+    def __processing2tensor(imgs: List[np.ndarray], label_info: Union[pd.Series, int] = 0):
+        process_imgs = torch.stack([torch.tensor(img.transpose((2, 0, 1))) for img in imgs]).type(torch.uint8)
+
+        if not isinstance(label_info, int):  # hit_frame in it
+            process_label = torch.zeros(32, dtype=torch.float32)
+            process_label[label_info.at[CSVColumnNames.HitFrame]] = 1.0  # HitFrame: [0~5] one-hot
+            process_label[6 if label_info.at[CSVColumnNames.Hitter] == 'A' else 7] = 1.0  # Hitter: [6,7] one-hot
+            process_label[7 + label_info.at[CSVColumnNames.RoundHead]] = 1.0  # RoundHead: [8,9] one-hot
+            process_label[9 + label_info.at[CSVColumnNames.Backhand]] = 1.0  # Backhand: [10,11] one-hot
+            process_label[11 + label_info.at[CSVColumnNames.BallHeight]] = 1.0  # BallHeight: [12,13] one-hot
+            process_label[14:20] = torch.from_numpy(
+                label_info.loc[
+                    [
+                        CSVColumnNames.LandingX,  # LandingX: 14
+                        CSVColumnNames.LandingY,  # LandingY: 15
+                        CSVColumnNames.HitterLocationX,  # HitterLocationX: 16
+                        CSVColumnNames.HitterLocationY,  # HitterLocationY: 17
+                        CSVColumnNames.DefenderLocationX,  # DefenderLocationX: 18
+                        CSVColumnNames.DefenderLocationY,  # DefenderLocationY: 19
+                    ],
+                ].to_numpy(dtype=np.float32)
+            )
+            process_label[19 + label_info.at[CSVColumnNames.BallType]] = 1.0  # BallType: [20~28] one-hot
+
+            w_id = 20
+            w = label_info.at[CSVColumnNames.Winner]
+            if w == 'B':
+                w_id += 1
+            elif w == 'X':
+                w_id += 2
+            process_label[w_id] = 1.0  # Winner: [29~31] one-hot
+
+            return process_imgs, process_label
+
+        if label_info == -1:  # hit_frame miss
+            process_label = torch.zeros(32, dtype=torch.float32)
+            process_label[6] = 1.0
+            return process_imgs, process_label
+
+    return __processing2tensor
+
+
 class Img5Dataset(Dataset):
     def __init__(self, dataset_ids: List[str], processing: Processing, isTrain=True) -> None:
         super(Img5Dataset, self).__init__()
@@ -168,15 +213,38 @@ class Img5Dataset(Dataset):
         return self.data_order_arr.shape[0]
 
 
+class Pickle5Dataset(Dataset):
+    def __init__(self, pickle_dir: str, compose: Union[CustomCompose, transforms.Compose]) -> None:
+        super(Pickle5Dataset, self).__init__()
+
+        self.compose = compose
+
+        self.filenames = get_filenames(pickle_dir, specific_name='*.pickle')
+
+    def __len__(self):
+        return len(self.filenames)
+
+    def __getitem__(self, index):
+        return self.compose(*load_pickle(self.filenames[index]))
+
+
 def get_dataloader(
-    preprocess_dir: str = str(DatasetInfo.data_dir),
-    Processing=Processing,
+    preprocess_dir: str = None,
     dataset_rate=0.8,
     batch_size: int = 32,
     num_workers: int = 8,
+    usePickle: bool = False,
+    compose: Union[CustomCompose, transforms.Compose] = None,
+    Processing: Processing = None,
+    **kwargs,
 ):
-    dataset_ids: List[str] = os.listdir(preprocess_dir)
-    dataset = Img5Dataset(dataset_ids, processing=Processing)
+    if not usePickle:
+        assert callable(Processing), "Processing function is need!"
+        dataset_ids: List[str] = os.listdir(preprocess_dir)
+        dataset = Img5Dataset(dataset_ids, processing=Processing)
+    else:
+        assert isinstance(compose, (CustomCompose, transforms.Compose)), "compose must be CustomCompose or transforms.Compose"
+        dataset = Pickle5Dataset(preprocess_dir, compose)
 
     train_len = int(len(dataset) * dataset_rate)
     train_set, val_set = random_split(dataset, [train_len, len(dataset) - train_len])
@@ -198,6 +266,25 @@ def get_test_dataloader(
     loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
 
     return dataset, loader
+
+
+def __data2pickle():
+    dataset_ids: List[str] = os.listdir(str(DatasetInfo.data_dir))
+    img5dataset = Img5Dataset(dataset_ids, processing=Processing2Tensor(), isTrain=True)
+
+    data_len = len(img5dataset)
+
+    start_id = 0  # int(data_len // 8 * 7)
+    end_id = data_len  # int(data_len // 8 * 8)
+    for i in range(start_id, end_id):
+        path = f'{DatasetInfo.dataset_pickle_dir}/{i}.pickle'
+        if not Path(path).exists():
+            save_pickle(img5dataset[i], path)
+        else:
+            print(f"file exists: {path}")
+
+        if i % 50 == 0:
+            print(i)
 
 
 if __name__ == '__main__':
@@ -244,8 +331,21 @@ if __name__ == '__main__':
     # for pre-view stage
     view_compose = CustomCompose(argumentation_order_ls)
 
+    # train_set, val_set, train_loader, val_loader = get_dataloader(
+    #     preprocess_dir=str(DatasetInfo.data_dir),
+    #     dataset_rate=0.8,
+    #     batch_size=32,
+    #     num_workers=0,
+    #     Processing=Processing(view_compose),
+    # )
+
     train_set, val_set, train_loader, val_loader = get_dataloader(
-        str(DatasetInfo.data_dir), Processing(view_compose), dataset_rate=0.8, batch_size=32, num_workers=0
+        preprocess_dir=str(DatasetInfo.dataset_pickle_dir),
+        dataset_rate=0.8,
+        batch_size=32,
+        num_workers=0,
+        usePickle=True,
+        compose=view_compose,
     )
 
     w = 10
