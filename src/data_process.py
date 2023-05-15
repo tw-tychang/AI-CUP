@@ -104,7 +104,7 @@ def Processing(compose: Union[CustomCompose, transforms.Compose]):
             )
             process_label[19 + label_info.at[CSVColumnNames.BallType]] = 1.0  # BallType: [20~28] one-hot
 
-            w_id = 20
+            w_id = 29
             w = label_info.at[CSVColumnNames.Winner]
             if w == 'B':
                 w_id += 1
@@ -122,7 +122,7 @@ def Processing(compose: Union[CustomCompose, transforms.Compose]):
 
         if label_info == -1:  # hit_frame miss
             process_label = torch.zeros(32, dtype=torch.float32)
-            process_label[6] = 1.0
+            process_label[5] = 1.0
             process_imgs = compose(process_imgs)[0]
             return process_imgs, process_label
 
@@ -156,7 +156,7 @@ def Processing2Tensor():
             )
             process_label[19 + label_info.at[CSVColumnNames.BallType]] = 1.0  # BallType: [20~28] one-hot
 
-            w_id = 20
+            w_id = 29
             w = label_info.at[CSVColumnNames.Winner]
             if w == 'B':
                 w_id += 1
@@ -168,7 +168,7 @@ def Processing2Tensor():
 
         if label_info == -1:  # hit_frame miss
             process_label = torch.zeros(32, dtype=torch.float32)
-            process_label[6] = 1.0
+            process_label[5] = 1.0
             return process_imgs, process_label
 
     return __processing2tensor
@@ -275,7 +275,7 @@ def __data2pickle():
 
     data_len = len(img5dataset)
 
-    start_id = 0  # int(data_len // 8 * 7)
+    start_id = int(data_len // 8 * 7)  # int(data_len // 8 * 7)
     end_id = data_len  # int(data_len // 8 * 8)
     for i in range(start_id, end_id):
         path = f'{DatasetInfo.dataset_pickle_dir}/{i}.pickle'
@@ -289,119 +289,122 @@ def __data2pickle():
 
 
 if __name__ == '__main__':
-    import matplotlib.pyplot as plt
+    __data2pickle()
 
-    torch.manual_seed(42)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(42)
+# if __name__ == '__main__':
+#     import matplotlib.pyplot as plt
 
-    sizeHW = (640, 640)
+#     torch.manual_seed(42)
+#     if torch.cuda.is_available():
+#         torch.cuda.manual_seed_all(42)
 
-    # for test stage
-    test_compose = CustomCompose(
-        [
-            transforms.GaussianBlur([3, 3]),
-            transforms.ConvertImageDtype(torch.float32),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.25, 0.25, 0.25]),
-        ]
-    )
+#     sizeHW = (640, 640)
 
-    argumentation_order_ls = [
-        RandomHorizontalFlip(p=0.5),
-        transforms.GaussianBlur([3, 3]),
-        transforms.RandomApply([transforms.ColorJitter(brightness=0.4, hue=0.2, contrast=0.5, saturation=0.2)], p=0.75),
-        transforms.RandomPosterize(6, p=0.15),
-        transforms.RandomEqualize(p=0.15),
-        transforms.RandomSolarize(128, p=0.1),
-        transforms.RandomInvert(p=0.05),
-        transforms.RandomApply(
-            [transforms.ElasticTransform(alpha=random.random() * 200.0, sigma=8.0 + random.random() * 7.0)], p=0.75
-        ),
-        RandomRotation(degrees=[-5, 5], p=0.75),
-        RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
-    ]
-    # for train & val stage
-    train_compose = CustomCompose(
-        [
-            *argumentation_order_ls,
-            transforms.ConvertImageDtype(torch.float32),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.25, 0.25, 0.25]),
-        ]
-    )
+#     # for test stage
+#     test_compose = CustomCompose(
+#         [
+#             transforms.GaussianBlur([3, 3]),
+#             transforms.ConvertImageDtype(torch.float32),
+#             transforms.Normalize([0.5, 0.5, 0.5], [0.25, 0.25, 0.25]),
+#         ]
+#     )
 
-    # for pre-view stage
-    view_compose = CustomCompose(argumentation_order_ls)
+#     argumentation_order_ls = [
+#         RandomHorizontalFlip(p=0.5),
+#         transforms.GaussianBlur([3, 3]),
+#         transforms.RandomApply([transforms.ColorJitter(brightness=0.4, hue=0.2, contrast=0.5, saturation=0.2)], p=0.75),
+#         transforms.RandomPosterize(6, p=0.15),
+#         transforms.RandomEqualize(p=0.15),
+#         transforms.RandomSolarize(128, p=0.1),
+#         transforms.RandomInvert(p=0.05),
+#         transforms.RandomApply(
+#             [transforms.ElasticTransform(alpha=random.random() * 200.0, sigma=8.0 + random.random() * 7.0)], p=0.75
+#         ),
+#         RandomRotation(degrees=[-5, 5], p=0.75),
+#         RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
+#     ]
+#     # for train & val stage
+#     train_compose = CustomCompose(
+#         [
+#             *argumentation_order_ls,
+#             transforms.ConvertImageDtype(torch.float32),
+#             transforms.Normalize([0.5, 0.5, 0.5], [0.25, 0.25, 0.25]),
+#         ]
+#     )
 
-    # train_set, val_set, train_loader, val_loader = get_dataloader(
-    #     preprocess_dir=str(DatasetInfo.data_dir),
-    #     dataset_rate=0.8,
-    #     batch_size=32,
-    #     num_workers=0,
-    #     Processing=Processing(view_compose),
-    # )
+#     # for pre-view stage
+#     view_compose = CustomCompose(argumentation_order_ls)
 
-    train_set, val_set, train_loader, val_loader = get_dataloader(
-        preprocess_dir=str(DatasetInfo.dataset_pickle_dir),
-        dataset_rate=0.8,
-        batch_size=32,
-        num_workers=0,
-        usePickle=True,
-        compose=view_compose,
-    )
+#     # train_set, val_set, train_loader, val_loader = get_dataloader(
+#     #     preprocess_dir=str(DatasetInfo.data_dir),
+#     #     dataset_rate=0.8,
+#     #     batch_size=32,
+#     #     num_workers=0,
+#     #     Processing=Processing(view_compose),
+#     # )
 
-    w = 10
-    h = 10
-    columns = 5
-    rows = 3
+#     train_set, val_set, train_loader, val_loader = get_dataloader(
+#         preprocess_dir=str(DatasetInfo.dataset_pickle_dir),
+#         dataset_rate=0.8,
+#         batch_size=32,
+#         num_workers=0,
+#         usePickle=True,
+#         compose=view_compose,
+#     )
 
-    i = 0
-    fig = plt.figure()
+#     w = 10
+#     h = 10
+#     columns = 5
+#     rows = 3
 
-    data: torch.Tensor
-    label: torch.Tensor  # [6]=0 -> hit | [6]=1 -> miss
-    for j, (data, label) in enumerate(val_loader):
-        batch_imgs = data.numpy().transpose(0, 1, 3, 4, 2)
-        for k, imgs in enumerate(batch_imgs):
-            for l, img in enumerate(imgs):
-                fig.add_subplot(rows, columns, l + 5 * i + 1)
-                plt.imshow(img)
+#     i = 0
+#     fig = plt.figure()
 
-            i += 1
-            if i == 3:
-                print(f"saving out/argumentation_view/{j}_{k}.png")
-                plt.savefig(f'out/argumentation_view/{j}_{k}.png')
+#     data: torch.Tensor
+#     label: torch.Tensor  # [6]=0 -> hit | [6]=1 -> miss
+#     for j, (data, label) in enumerate(val_loader):
+#         batch_imgs = data.numpy().transpose(0, 1, 3, 4, 2)
+#         for k, imgs in enumerate(batch_imgs):
+#             for l, img in enumerate(imgs):
+#                 fig.add_subplot(rows, columns, l + 5 * i + 1)
+#                 plt.imshow(img)
 
-                i = 0
-                fig = plt.figure()
+#             i += 1
+#             if i == 3:
+#                 print(f"saving out/argumentation_view/{j}_{k}.png")
+#                 plt.savefig(f'out/argumentation_view/{j}_{k}.png')
 
-        # cv2.imwrite(f'tt{i}.jpg', cv2.cvtColor(np.uint8(img * 255), cv2.COLOR_BGR2RGB))
+#                 i = 0
+#                 fig = plt.figure()
 
-    # dataset_ids: List[str] = os.listdir(str(DatasetInfo.data_dir))
-    # dataset = Img5Dataset(dataset_ids, processing=Processing(compose))
+#         # cv2.imwrite(f'tt{i}.jpg', cv2.cvtColor(np.uint8(img * 255), cv2.COLOR_BGR2RGB))
 
-    # check_start = len(dataset) - (len(dataset) // 4)
-    # check_end = len(dataset)
-    # error_ids = []
-    # error_msgs = []
-    # for i in range(check_start, check_end):
-    #     try:
-    #         data, label = dataset[i]
-    #     except Exception as e:
-    #         error_msg = f'{i}, {e}'
-    #         print(str_format(error_msg, fore='r'))
-    #         error_ids.append(i)
-    #         error_msgs.append(error_msg)
+#     # dataset_ids: List[str] = os.listdir(str(DatasetInfo.data_dir))
+#     # dataset = Img5Dataset(dataset_ids, processing=Processing(compose))
 
-    #     if i % 100 == 0:
-    #         print(i)
+#     # check_start = len(dataset) - (len(dataset) // 4)
+#     # check_end = len(dataset)
+#     # error_ids = []
+#     # error_msgs = []
+#     # for i in range(check_start, check_end):
+#     #     try:
+#     #         data, label = dataset[i]
+#     #     except Exception as e:
+#     #         error_msg = f'{i}, {e}'
+#     #         print(str_format(error_msg, fore='r'))
+#     #         error_ids.append(i)
+#     #         error_msgs.append(error_msg)
 
-    # # dataset[check_start]
+#     #     if i % 100 == 0:
+#     #         print(i)
 
-    # # print(len(dataset))
-    # # print(str_format(f"error_ids: {error_ids}", fore='y'))
-    # # print(error_msgs)
+#     # # dataset[check_start]
 
-    # train_len = int(len(dataset) * 0.8)
-    # train_set, val_set = random_split(dataset, len(dataset) - train_len)
+#     # # print(len(dataset))
+#     # # print(str_format(f"error_ids: {error_ids}", fore='y'))
+#     # # print(error_msgs)
 
-    # dataset[1]
+#     # train_len = int(len(dataset) * 0.8)
+#     # train_set, val_set = random_split(dataset, len(dataset) - train_len)
+
+#     # dataset[1]
