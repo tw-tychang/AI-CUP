@@ -225,7 +225,7 @@ class Pickle5Dataset(Dataset):
         return len(self.filenames)
 
     def __getitem__(self, index):
-        return self.compose(*load_pickle(self.filenames[index]))
+        return load_pickle(self.filenames[index])
 
 
 def get_dataloader(
@@ -233,6 +233,7 @@ def get_dataloader(
     dataset_rate=0.8,
     batch_size: int = 32,
     num_workers: int = 8,
+    pin_memory: bool = False,
     usePickle: bool = False,
     compose: Union[CustomCompose, transforms.Compose] = None,
     Processing: Processing = None,
@@ -248,8 +249,8 @@ def get_dataloader(
 
     train_len = int(len(dataset) * dataset_rate)
     train_set, val_set = random_split(dataset, [train_len, len(dataset) - train_len])
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
 
     return train_set, val_set, train_loader, val_loader
 
