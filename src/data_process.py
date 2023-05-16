@@ -214,12 +214,17 @@ class Img5Dataset(Dataset):
 
 
 class Pickle5Dataset(Dataset):
-    def __init__(self, pickle_dir: str, compose: Union[CustomCompose, transforms.Compose]) -> None:
+    def __init__(
+        self, compose: Union[CustomCompose, transforms.Compose], pickle_dir: str, filenames: Union[List[str], None] = None
+    ) -> None:
         super(Pickle5Dataset, self).__init__()
 
         self.compose = compose
 
-        self.filenames = get_filenames(pickle_dir, specific_name='*.pickle')
+        if isinstance(filenames, list):
+            self.filenames = filenames
+        else:
+            self.filenames = get_filenames(pickle_dir, specific_name='*.pickle')
 
     def __len__(self):
         return len(self.filenames)
@@ -230,6 +235,7 @@ class Pickle5Dataset(Dataset):
 
 def get_dataloader(
     preprocess_dir: str = None,
+    filenames: Union[List[str], None] = None,
     dataset_rate=0.8,
     batch_size: int = 32,
     num_workers: int = 8,
@@ -245,7 +251,7 @@ def get_dataloader(
         dataset = Img5Dataset(dataset_ids, processing=Processing)
     else:
         assert isinstance(compose, (CustomCompose, transforms.Compose)), "compose must be CustomCompose or transforms.Compose"
-        dataset = Pickle5Dataset(preprocess_dir, compose)
+        dataset = Pickle5Dataset(compose, preprocess_dir, filenames)
 
     train_len = int(len(dataset) * dataset_rate)
     train_set, val_set = random_split(dataset, [train_len, len(dataset) - train_len])
@@ -275,7 +281,26 @@ def __data2pickle():
 
     data_len = len(img5dataset)
 
-    start_id = int(data_len // 8 * 7)  # int(data_len // 8 * 7)
+    start_id = 0  # int(data_len // 8 * 7)
+    end_id = data_len  # int(data_len // 8 * 8)
+    for i in range(start_id, end_id):
+        path = f'{DatasetInfo.dataset_pickle_dir}/{i}.pickle'
+        if not Path(path).exists():
+            save_pickle(img5dataset[i], path)
+        else:
+            print(f"file exists: {path}")
+
+        if i % 50 == 0:
+            print(i)
+
+
+def testData2pickle(test_dir: str):
+    dataset_ids: List[str] = os.listdir(test_dir)
+    img5dataset = Img5Dataset(dataset_ids, processing=Processing2Tensor(), isTrain=True)
+
+    data_len = len(img5dataset)
+
+    start_id = 0  # int(data_len // 8 * 7)
     end_id = data_len  # int(data_len // 8 * 8)
     for i in range(start_id, end_id):
         path = f'{DatasetInfo.dataset_pickle_dir}/{i}.pickle'
@@ -289,7 +314,49 @@ def __data2pickle():
 
 
 if __name__ == '__main__':
-    __data2pickle()
+    dataset = Pickle5Dataset(str(DatasetInfo.dataset_pickle_dir), None)
+    loader = DataLoader(
+        dataset,
+        batch_size=30,
+        num_workers=30,
+        shuffle=False,
+    )
+
+    # hit_miss_table = np.zeros(len(dataset), dtype=np.uint8)
+
+    import os
+    from tqdm import tqdm
+    from lib.FileTools.FileSearcher import check2create_dir
+
+    hit_miss_dir = [str(DatasetInfo.dataset_pickle_dir / 'hit'), str(DatasetInfo.dataset_pickle_dir / 'miss')]
+    check2create_dir(hit_miss_dir[0])
+    check2create_dir(hit_miss_dir[1])
+
+    dataset.filenames.sort(reverse=True)
+
+    already_in = [
+        *get_filenames(hit_miss_dir[0], '*.pickle', withDirPath=False),
+        *get_filenames(hit_miss_dir[1], '*.pickle', withDirPath=False),
+    ]
+    for i in tqdm(range(len(dataset))):
+        filename = dataset.filenames[i].split('/')[-1]
+
+        if filename not in already_in:
+            label: torch.Tensor = dataset[i][1]
+            check = torch.argmax(label[:6]) // 5
+            path = f'{hit_miss_dir[check]}/{filename}'
+
+            os.symlink(f'../{filename}', f'{hit_miss_dir[check]}/{filename}')
+
+    # i = 0
+    # for _, labels in tqdm(loader):
+    #     for l in labels:
+    #         hit_miss_table[i] = torch.argmax(l[:6]) // 5
+
+    # hit_miss_table = 1 - hit_miss_table
+
+    # print(f"hits: {hit_miss_table[hit_miss_table>0].shape[0]}")
+    # print(f"miss: {hit_miss_table[hit_miss_table==0].shape[0]}")
 
 # if __name__ == '__main__':
 #     import matplotlib.pyplot as plt
