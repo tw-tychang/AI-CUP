@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     sys.path.append(str(PROJECT_DIR))
 
-from lib.FileTools.FileSearcher import get_filenames
+from lib.FileTools.FileSearcher import get_filenames, check2create_dir
 from lib.FileTools.PickleOperator import load_pickle, save_pickle
 from src.transforms import CustomCompose, RandomHorizontalFlip, RandomResizedCrop, RandomRotation
 
@@ -33,7 +33,7 @@ class DatasetInfo:
     ball_mask5_dir = Path('ball_mask5_dir')
 
     def __init__(self, data_id: str, isTrain=True) -> None:
-        self.id = int(data_id)
+        self.id = data_id
         self.data_dir = DatasetInfo.data_dir / data_id
         self.image_dir = self.data_dir / DatasetInfo.image_dir
         self.mask_dir = self.data_dir / DatasetInfo.mask_dir
@@ -46,6 +46,9 @@ class DatasetInfo:
 
         if isTrain:
             self.label_csv = DatasetInfo.label_dir / data_id / f'{data_id}_S2.csv'
+        else:
+            self.dataset_pickle_dir = self.data_dir / str(self.dataset_pickle_dir).split('/')[-1]
+            check2create_dir(self.dataset_pickle_dir)
 
 
 class CSVColumnNames:
@@ -171,6 +174,8 @@ def Processing2Tensor():
             process_label[5] = 1.0
             return process_imgs, process_label
 
+        return process_imgs  # label_info == 0, test stage
+
     return __processing2tensor
 
 
@@ -186,6 +191,8 @@ class Img5Dataset(Dataset):
 
         if self.isTrain:
             self.label_csvs = [dataset_info.label_csv for dataset_info in dataset_infos]
+        else:
+            self.dataset_infos = dataset_infos
 
     def __getitem__(self, idx):
         frame5_start = self.data_order_arr[idx]
@@ -207,6 +214,8 @@ class Img5Dataset(Dataset):
             df.at[hit_idx, CSVColumnNames.HitFrame] -= frame5_start
             return self.processing(imgs, label_info=df.loc[hit_idx])
         else:
+            self.data_dir = DatasetInfo(f'{self.frameID2startIdx_arr[data_id][0]:05d}', isTrain=False).dataset_pickle_dir
+            self.frame5_start = frame5_start
             return self.processing(imgs, label_info=0)
 
     def __len__(self):
@@ -295,25 +304,24 @@ def __data2pickle():
 
 
 def testData2pickle(test_dir: str):
-    dataset_ids: List[str] = os.listdir(test_dir)
-    img5dataset = Img5Dataset(dataset_ids, processing=Processing2Tensor(), isTrain=True)
+    DatasetInfo.data_dir = Path(test_dir)
+    dataset_ids: List[str] = sorted(os.listdir(test_dir))
+    img5dataset = Img5Dataset(dataset_ids, processing=Processing2Tensor(), isTrain=False)
 
     data_len = len(img5dataset)
 
     start_id = 0  # int(data_len // 8 * 7)
-    end_id = data_len  # int(data_len // 8 * 8)
+    end_id = 183  # int(data_len // 8 * 8)
     for i in range(start_id, end_id):
-        path = f'{DatasetInfo.dataset_pickle_dir}/{i}.pickle'
-        if not Path(path).exists():
-            save_pickle(img5dataset[i], path)
-        else:
-            print(f"file exists: {path}")
+        data = img5dataset[i]
+        path = str(img5dataset.data_dir / f'{img5dataset.frame5_start}.pickle')
+        save_pickle(data, path)
 
-        if i % 50 == 0:
+        if (i) % 50 == 0:
             print(i)
 
 
-if __name__ == '__main__':
+def separate_pickle5HitMiss():
     dataset = Pickle5Dataset(str(DatasetInfo.dataset_pickle_dir), None)
     loader = DataLoader(
         dataset,
@@ -348,15 +356,9 @@ if __name__ == '__main__':
 
             os.symlink(f'../{filename}', f'{hit_miss_dir[check]}/{filename}')
 
-    # i = 0
-    # for _, labels in tqdm(loader):
-    #     for l in labels:
-    #         hit_miss_table[i] = torch.argmax(l[:6]) // 5
 
-    # hit_miss_table = 1 - hit_miss_table
-
-    # print(f"hits: {hit_miss_table[hit_miss_table>0].shape[0]}")
-    # print(f"miss: {hit_miss_table[hit_miss_table==0].shape[0]}")
+if __name__ == '__main__':
+    testData2pickle('Data/part1/private_data')
 
 # if __name__ == '__main__':
 #     import matplotlib.pyplot as plt
