@@ -21,20 +21,13 @@ algorithm_threshold = torch.tensor([6.0, 10.0, 10.0]).to(device)
 
 
 def general_loss(outputs: torch.Tensor, labels: torch.Tensor):
-    o2 = F.softmax(outputs[6:8])
-    o3 = F.softmax(outputs[8:10])
-    o4 = F.softmax(outputs[10:12])
-    o5 = F.softmax(outputs[12:14])
-    o7 = F.softmax(outputs[20:29])
-    o8 = F.softmax(outputs[29:32])
-
     loss1 = F.cross_entropy(outputs[:6], labels[:6]) / max_6cross_loss  # HitFrame
-    loss2 = F.cross_entropy(o2, labels[6:8]) / max_2cross_loss  # Hitter
-    loss3 = F.cross_entropy(o3, labels[8:10]) / max_2cross_loss  # Roundhand
-    loss4 = F.cross_entropy(o4, labels[10:12]) / max_2cross_loss  # Backhand
-    loss5 = F.cross_entropy(o5, labels[12:14]) / max_2cross_loss  # BallHeight
-    loss7 = F.cross_entropy(o7, labels[20:29]) / max_9cross_loss  # BallType
-    loss8 = F.cross_entropy(o8, labels[29:32]) / max_3cross_loss  # Winner
+    loss2 = F.cross_entropy(outputs[6:8], labels[6:8]) / max_2cross_loss  # Hitter
+    loss3 = F.cross_entropy(outputs[8:10], labels[8:10]) / max_2cross_loss  # Roundhand
+    loss4 = F.cross_entropy(outputs[10:12], labels[10:12]) / max_2cross_loss  # Backhand
+    loss5 = F.cross_entropy(outputs[12:14], labels[12:14]) / max_2cross_loss  # BallHeight
+    loss7 = F.cross_entropy(outputs[20:29], labels[20:29]) / max_9cross_loss  # BallType
+    loss8 = F.cross_entropy(outputs[29:32], labels[29:32]) / max_3cross_loss  # Winner
 
     o6 = outputs[14:20]
     l6 = labels[14:20]
