@@ -39,6 +39,7 @@ def general_loss(outputs: torch.Tensor, labels: torch.Tensor):
     o6 = outputs[14:20]
     l6 = labels[14:20]
     dist6 = F.pairwise_distance(torch.stack([o6[0::2], o6[1::2]]).permute(1, 0), torch.stack([l6[0::2], l6[1::2]]).permute(1, 0))
+    # loss6 = F.mse_loss( torch.stack([o6[0::2], o6[1::2]]).permute(1, 0),torch.stack([l6[0::2], l6[1::2]]).permute(1, 0), reduction = 'none')
 
     algorithm_6 = dist6 // algorithm_threshold
     algorithm_6 = algorithm_6 // (algorithm_6 - 0.00001)
@@ -80,4 +81,4 @@ class CustomLoss(nn.modules.loss._WeightedLoss):
                 i += 1
             loss /= i
 
-        return torch.tensor(loss, requires_grad=True)
+        return torch.tensor(loss * 100, requires_grad=True)
