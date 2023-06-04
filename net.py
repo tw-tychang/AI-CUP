@@ -60,16 +60,16 @@ class BadminationNet(nn.Module):
         x = self.eff(x)
         return torch.hstack([lin(x) for lin in (self.lins)])
 
-    def update(self, pred: torch.Tensor, label: torch.Tensor):
+    def update(self, pred: torch.Tensor, labels: torch.Tensor):
         idxs = [6, 8, 10, 12, 14, 20, 29, 32]
         loss_func_order: List[nn.Module] = [*[self.cn] * 5, self.mse, *[self.cn] * 2]
 
         idx_start = 0
         for idx_end, loss_func, lin_optim in zip(idxs, loss_func_order, self.lin_optims):
-            p = pred[:, idx_start:idx_end]
-            l = label[:, idx_start:idx_end]
-            loss: torch.Tensor = loss_func(p, l)
-            # loss: torch.Tensor = loss_func(pred[idx_start:idx_end], label[idx_start:idx_end])
+            # p = pred[:, idx_start:idx_end]
+            # l = labels[:, idx_start:idx_end]
+            # loss: torch.Tensor = loss_func(p, l)
+            loss: torch.Tensor = loss_func(pred[:, idx_start:idx_end], labels[:, idx_start:idx_end])
             loss.backward(retain_graph=True)
             lin_optim.step()
             lin_optim.zero_grad()
