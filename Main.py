@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2'
 import argparse
 import random
 import numpy as np
@@ -15,8 +15,8 @@ from tqdm import tqdm
 from src.data_process import DatasetInfo, get_dataloader, Processing, get_test_dataloader
 from src.transforms import CustomCompose, IterativeCustomCompose, RandomCrop, RandomResizedCrop, RandomHorizontalFlip, RandomRotation
 from lib.FileTools.FileSearcher import get_filenames
-from net_pretrained_effv2 import Net
 from lib.ML_Tools.ModelPerform import ModelPerform
+from net import BadminationNet
 
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -77,41 +77,64 @@ def main(args):
 
     # dataloader
     train_loader, val_loader = get_dataloader(
-    filenames=[*get_filenames('Data/dataset_pickle/hit',specific_name="*.pickle"), *get_filenames('Data/dataset_pickle/miss',specific_name="*.pickle")[:7000]],
-    dataset_rate=0.8,
-    batch_size=15,
-    num_workers=36,
-    pin_memory=True,
-    usePickle=True,
-    compose=train_compose,
+        filenames=[
+            *get_filenames('Data/dataset_pickle/hit', specific_name="*.pickle"),
+            *get_filenames('Data/dataset_pickle/miss', specific_name="*.pickle")[:6000],
+        ],
+        dataset_rate=0.8,
+        batch_size=23,
+        num_workers=46,
+        pin_memory=True,
+        usePickle=True,
+        compose=train_compose,
     )[2:]
+
+    # filenames = [
+    #     *get_filenames('Data/dataset_pickle/hit', specific_name="*.pickle"),
+    #     *get_filenames('Data/dataset_pickle/miss', specific_name="*.pickle")[:4000],
+    # ]
+    # random.shuffle(filenames)
+    # filenames = filenames[:100]
+
+    # # dataloader
+    # train_loader, val_loader = get_dataloader(
+    #     filenames=filenames,
+    #     dataset_rate=0.8,
+    #     batch_size=23,
+    #     num_workers=46,
+    #     pin_memory=True,
+    #     usePickle=True,
+    #     compose=train_compose,
+    # )[2:]
 
     # test_set, loader = get_test_dataloader(str(DatasetInfo.data_dir), Processing(test_compose), batch_size=65, num_workers=46)
 
     gpu0_bsz = 7
     acc_grad = 1
     # File = '/root/Work/AI-CUP/out/loss937.04813.pt'
-    # model = BadminationNet(in_seq=5, output_classes=32)
-    model = Net(in_seq=5, output_classes=32)
+    bad_model = BadminationNet(in_seq=5)
 
-    model = BalancedDataParallel(gpu0_bsz, model, dim=0).to(device)
+    model = BalancedDataParallel(gpu0_bsz, bad_model, dim=0).to(device)
+    model.update = bad_model.update
 
     # model.load_state_dict(torch.load(File))
 
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.w_d,momentum=args.m)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.w_d, momentum=args.m)
     train_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step, gamma=args.gamma)
     total_epoch = args.epochs
     print_per_iteration = 100
 
-    loss_func = CustomLoss()
-    model_perform = ModelPerform(train_loss_ls=[], test_loss_ls=[])  # ,train_acc_ls=[],test_acc_ls=[])
+    loss_func = CustomLoss().to(device)
+    model_perform = ModelPerform(
+        train_loss_ls=[], train_acc_ls=[], test_loss_ls=[], test_acc_ls=[]
+    )  # ,train_acc_ls=[],test_acc_ls=[])
 
     total_epoch += model_perform.num_epoch
     for model_perform.num_epoch in range(model_perform.num_epoch + 1, total_epoch + 1):  # loop over the dataset multiple times
         print('epoch = ', model_perform.num_epoch)
 
         #!train
-        best_val_loss = 10.0 
+        best_val_loss = 999999.0
         train_sum_loss = 0.0
         model.train()
         inputs: torch.Tensor
@@ -133,14 +156,13 @@ def main(args):
                 labels[:, 14:20:2] = batch_coordXYs[0]
                 labels[:, 15:20:2] = batch_coordXYs[1]
 
-            optimizer.zero_grad()
             outputs = model(inputs)
-            train_loss = loss_func(outputs, labels)
-            train_loss.backward()
-            optimizer.step()
-            train_sum_loss += train_loss.item()
+            model.update(outputs, labels)
+
+            # todo: need to add the general loss
+            train_sum_loss += loss_func(outputs, labels).item()
         model_perform.train_loss_ls.append(train_sum_loss / len(train_loader))
-        # model_perform.train_acc_ls.append(0.0)
+        model_perform.train_acc_ls.append(0.0)
 
         if (i + 1) % print_per_iteration == 0:
             print(f'[{model_perform.num_epoch + 1:3}/{total_epoch}] loss: {model_perform.train_loss_ls[-1]:.5f}')
@@ -149,6 +171,7 @@ def main(args):
 
         # validation
         sum_loss = 0
+        err_num = 0
         model.eval()
         with torch.no_grad():
             for inputs, labels in tqdm(val_loader):
@@ -164,13 +187,18 @@ def main(args):
                     labels[:, 14:20:2] = batch_coordXYs[0]
                     labels[:, 15:20:2] = batch_coordXYs[1]
 
-                outputs = model(inputs)
+                try:
+                    outputs = model(inputs)
+                except ValueError:
+                    err_num += 1
+                    continue
+
                 # print(outputs)
                 val_loss = loss_func(outputs, labels)
                 sum_loss += val_loss.item()
 
-        model_perform.test_loss_ls.append(sum_loss / len(val_loader))
-        # model_perform.test_acc_ls.append(0.0)
+        model_perform.test_loss_ls.append(sum_loss / (len(val_loader) - err_num))
+        model_perform.test_acc_ls.append(0.0)
 
         if best_val_loss > model_perform.test_loss_ls[-1]:
             best_val_loss = model_perform.test_loss_ls[-1]
