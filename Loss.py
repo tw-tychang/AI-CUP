@@ -69,9 +69,8 @@ class CustomLoss(nn.modules.loss._WeightedLoss):
         i = 0
         with torch.no_grad():
             for output, label in zip(outputs, labels):
-                output[:6] = F.softmax(output[:6]).clone()
-                loss += self.loss_func_ls[int(label[5])](output, label)
+                loss += self.loss_func_ls[torch.argmax(label[:6]//5)](output, label)
                 i += 1
             loss /= i
 
-        return torch.tensor(loss * 100, requires_grad=True)
+        return torch.tensor(loss)
